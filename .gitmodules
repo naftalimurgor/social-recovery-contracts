@@ -1,0 +1,3 @@
+[submodule "contracts/lsp-smart-contracts"]
+	path = contracts/lsp-smart-contracts
+	url = https://github.com/lukso-network/lsp-smart-contracts
