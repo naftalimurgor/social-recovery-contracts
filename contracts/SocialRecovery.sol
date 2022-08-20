@@ -7,12 +7,9 @@ import "./lsp-smart-contracts/contracts/LSP11BasicSocialRecovery/LSP11BasicSocia
 import "./SocialRecoveryCore.sol";
 
 contract SocialRecovery is LSP11BasicSocialRecovery, SocialRecoveryCore {
-    LSP6KeyManager private _keyManager;
-
-    constructor(address target, address account_)
+    constructor(address account_)
         LSP11BasicSocialRecovery(account_)
     {
-        _keyManager = new LSP6KeyManager(target);
         _setOwner(msg.sender);
-    }
+    }    
 }
