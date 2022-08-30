@@ -4,8 +4,6 @@ import { Contract } from 'ethers'
 import '@nomiclabs/hardhat-ethers'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 
-const EthCrypto = require('eth-crypto')
-
 describe('SocialRecovery', function () {
   let socialRecovery: Contract
   let erc725Account: Contract
@@ -18,19 +16,10 @@ describe('SocialRecovery', function () {
     random: SignerWithAddress
 
 
-  this.beforeEach(async function () {
+  beforeEach(async function () {
     [owner, guardianOne, guardianTwo, guardianThree, random] = await ethers.getSigners()
 
-    const VerifySignatureLib = await hre.ethers.getContractFactory('VerifySignature')
-    const verifySignatureLib = await VerifySignatureLib.deploy()
-    await verifySignatureLib.deployed()
-
-    const SocialRecovery = await hre.ethers.getContractFactory('SocialRecovery', {
-      signer: owner,
-      libraries: {
-        VerifySignature: verifySignatureLib.address
-      }
-    })
+    const SocialRecovery = await hre.ethers.getContractFactory('SocialRecovery')
 
     socialRecovery = await SocialRecovery.deploy(owner.address)
     await socialRecovery.deployed()
@@ -61,35 +50,42 @@ describe('SocialRecovery', function () {
     })
   })
 
-  describe('when adding guardian signatures', () => {
-    it('should add new signature', async () => {
-      // add super guardian first
-      await socialRecovery.addSuperGuardian(guardianThree.address)
-      const message = 'Hello World'
-      const signature = await guardianThree.signMessage(message)
-      await socialRecovery.addGuardianSignature(guardianThree.address, signature)
-      expect(await socialRecovery.retrieveSignature(guardianThree.address, secretPhrase))
-    })
+  it('should add new signature', async () => {
+    // add super guardian first
+    await socialRecovery.addSuperGuardian(guardianThree.address)
+    // const messageHash = ethers.utils.solidityKeccak256(['string'], [message])
+    const messasgeBytes = ethers.utils.arrayify(ethers.utils.id('hello world'))
+    const messageHash = ethers.utils.hashMessage(messasgeBytes)
 
-    it('it should verify signature', async () => {
-      await socialRecovery.addSuperGuardian(owner.address)
-      const messageHash = EthCrypto.hash.keccak256([
-        {
-          type: 'string',
-          value: 'hello world'
-        }
-      ])
-      console.log(messageHash)
-      
-      const signature = await owner.signMessage(messageHash)
-      console.log('signature', signature)
-      await socialRecovery.addGuardianSignature(owner.address, signature)
-      const result = await socialRecovery.verifySignature(messageHash, signature)
-      console.log(result)
-      expect(result).to.equal(owner.address)
 
-    })
+    const signature = await owner.signMessage(messasgeBytes)
+    await socialRecovery.addGuardianSignature(guardianThree.address, signature)
+    expect(await socialRecovery.retrieveSignature(guardianThree.address, secretPhrase))
   })
 
+  it('it should verify signature', async () => {
+    await socialRecovery.addSuperGuardian(owner.address)
+    const message = 'hello world'
 
+    // const messageHash = ethers.utils.solidityKeccak256(['string'], [message])
+    const messasgeBytes = ethers.utils.arrayify(ethers.utils.id(message))
+    const messageHash = ethers.utils.hashMessage(messasgeBytes)
+
+
+    const signature = await owner.signMessage(messasgeBytes)
+
+    console.log(owner.address == ethers.utils.verifyMessage(messasgeBytes, signature))
+    console.log(owner.address)
+    await socialRecovery.addGuardianSignature(owner.address, signature)
+
+    try {
+      const result = await socialRecovery.confirmSignature(messageHash, signature)
+      console.log(result == owner.address)
+      console.log(result)
+    } catch (error) {
+      console.error(error)
+    }
+
+  })
 })
+

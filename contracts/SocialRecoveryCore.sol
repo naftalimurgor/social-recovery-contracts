@@ -6,7 +6,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {OwnableUnset} from "@erc725/smart-contracts/contracts/custom/OwnableUnset.sol";
 
 import "./ISocialRecovery.sol";
-import "./VerifySignature.sol";
 
 abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -30,7 +29,7 @@ abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
     uint256 _superGuardianThreshold;
 
     /// @dev superGuardians is a mapping of guardian address to set of signatures.
-    mapping(address => string) internal _superGuardiansSignatures;
+    mapping(address => bytes) internal _superGuardiansSignatures;
 
     /// @dev throws for if non-superguardian tries to call methods restricted to superGuardian.
     modifier onlySuperGuardian(address superGuardian) {
@@ -58,7 +57,7 @@ abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
     /// @dev add new superGuardian signature.
     function addGuardianSignature(
         address superGuardian,
-        string memory signature
+        bytes memory signature
     ) public virtual onlyOwner superGuardianExists(superGuardian) {
         _superGuardiansSignatures[superGuardian] = signature;
     }
@@ -97,7 +96,7 @@ abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
     function retrieveSignature(
         address superGuardian,
         string memory secretPhrase
-    ) external view superGuardianExists(superGuardian) returns (string memory) {
+    ) external view superGuardianExists(superGuardian) returns (bytes memory) {
         _verifySecret(secretPhrase);
         return _superGuardiansSignatures[superGuardian];
     }
@@ -140,14 +139,14 @@ abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
 
     /// @dev verify a single signature based on the initial messageHash.
     /// removes signature after verification.
-    function verifySignature(bytes32 messageHash, bytes memory sig)
-        onlySuperGuardian(msg.sender)
+    function confirmSignature(bytes32 messageHash, bytes memory sig)
         external
         returns (address)
     {
       
-        address signer = VerifySignature.recoverSigner(messageHash, sig);
-        require(signer == msg.sender, "Failed to verify signature");
+        address signer = _recoverSigner(messageHash, sig);
+        bool isvalid = _superGuardians.contains(signer);
+        require(isvalid, "Failed to verify signature");
         _signatureVerificationCount++;
         delete _superGuardiansSignatures[signer];
         return signer;
@@ -174,5 +173,46 @@ abstract contract SocialRecoveryCore is ISocialRecovery, OwnableUnset {
                 keccak256(abi.encodePacked(_secretPhraseHash)),
             "SecretPhrase is wrong"
         );
+    }
+
+    /// @dev recovers public key used to sign the message.
+    /// original message(kecca256 encoded) and signature(kecca256 encoded plus signed with privateKey)
+    function _recoverSigner(bytes32 messageHash, bytes memory sig)
+        internal
+        pure
+        returns (address)
+    {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        (v, r, s) = _splitSignature(sig);
+        address signer = ecrecover(messageHash, v, r, s);
+        return signer;
+    }
+
+    /// split signature in {r,s,v} segments
+    function _splitSignature(bytes memory sig)
+        internal
+        pure
+        returns (
+            uint8,
+            bytes32,
+            bytes32
+        )
+    {
+        require(sig.length == 65, "Invalid signature");
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            // first 32 bytes, after the length prefix
+            r := mload(add(sig, 32))
+            // second 32 bytes
+            s := mload(add(sig, 64))
+            v := byte(0, mload(add(sig, 96)))
+        }
+
+        return (v, r, s);
     }
 }
